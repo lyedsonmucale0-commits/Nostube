@@ -182,12 +182,32 @@ aleluia hosana salmos proverbios romanos corintios hebreus genesis apocalipse
 filipenses efesios joao mateus marcos lucas
 `;
 
-// --- Transformar qualquer pesquisa em pesquisa cristã ---
+// --- Transformar qualquer pesquisa em pesquisa cristã (mais precisa) ---
 function criarPesquisaCrista(termo){
-  termo = removerAcentos(termo);
-  const listaCrista = removerAcentos(palavrasCristas);
-  return `${termo} ${listaCrista}`;
+  termo = removerAcentos(termo).trim();
+  const listaCrista = removerAcentos(palavrasCristas).split(/\s+/);
+
+  // Se o termo já estiver na lista cristã, só pesquisar o termo
+  if(listaCrista.includes(termo.toLowerCase())) {
+    return termo;
+  }
+
+  // Se não estiver, adiciona até 10 palavras aleatórias da lista
+  const extras = listaCrista.sort(()=>0.5-Math.random()).slice(0,10).join(' ');
+  return `${termo} ${extras}`;
 }
+
+// --- Inicializa pesquisa ---
+function iniciarPesquisa(){
+  currentQuery = searchInput.value.trim();
+  if(!currentQuery) return alert('Digite algo para pesquisar!');
+  nextPageToken = null; 
+  resultsGrid.innerHTML = '';
+  loadResults();
+}
+
+searchBtn.onclick = iniciarPesquisa;
+searchInput.addEventListener('keypress', e => { if(e.key==='Enter') iniciarPesquisa(); });
 
 // --- Funções do YouTube ---
 function onYouTubeIframeAPIReady(){player=new YT.Player('player',{height:'420',width:'100%',videoId:'',playerVars:{'autoplay':1,'controls':1,'rel':0,'modestbranding':1}});}
@@ -243,16 +263,9 @@ document.querySelectorAll('#categories .chip').forEach(el=>{
     el.classList.add('active');
     const cat=el.dataset.cat;
     searchInput.value=cat;
-    currentQuery=cat; nextPageToken=null; resultsGrid.innerHTML=''; loadResults();
+    iniciarPesquisa();
   }
 });
-
-// --- Pesquisa ---
-searchBtn.onclick=()=>{
-  currentQuery=searchInput.value.trim(); if(!currentQuery)return;
-  nextPageToken=null; resultsGrid.innerHTML=''; loadResults();
-}
-searchInput.addEventListener('keypress',e=>{if(e.key==='Enter'){searchBtn.click();}})
 
 // --- Scroll infinito ---
 window.addEventListener('scroll',()=>{
@@ -261,7 +274,7 @@ window.addEventListener('scroll',()=>{
   }
 })
 
-// --- Função de busca ---
+// --- Função de busca com tratamento de erros ---
 async function loadResults(){
   if(!currentQuery) return;
   isLoading=true;
@@ -269,11 +282,13 @@ async function loadResults(){
     const queryCrista = criarPesquisaCrista(currentQuery);
     const url=`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&type=video&q=${encodeURIComponent(queryCrista)}&key=${API_KEY}${nextPageToken?'&pageToken='+nextPageToken:''}`;
     const res=await fetch(url);
+    if(!res.ok) throw new Error('Erro na requisição à API do YouTube');
     const data=await res.json();
-    nextPageToken=data.nextPageToken||null;
+    if(!data.items || data.items.length===0) throw new Error('Nenhum resultado encontrado');
+    nextPageToken = data.nextPageToken || null;
+
     data.items.forEach(it=>{
-      const card=document.createElement('div'); 
-      card.className='card';
+      const card=document.createElement('div'); card.className='card';
       const thumb=document.createElement('img'); thumb.className='thumb'; thumb.src=it.snippet.thumbnails.medium.url;
       const body=document.createElement('div'); body.className='card-body';
       const title=document.createElement('div'); title.className='title'; title.textContent=it.snippet.title;
@@ -282,8 +297,8 @@ async function loadResults(){
       card.appendChild(thumb); card.appendChild(body);
       card.onclick=()=>playVideo(it.id.videoId,it.snippet.title,it.snippet.channelTitle,it.snippet.description);
       resultsGrid.appendChild(card);
-    })
-  }catch(e){console.error(e);}
+    });
+  }catch(e){console.error(e); alert('Erro ao buscar vídeos: '+e.message);}
   finally{isLoading=false;}
 }
 
@@ -292,7 +307,6 @@ function loadFeatured(){
   const sample=palavrasCristas.trim().split(/\s+/).sort(()=>0.5-Math.random()).slice(0,8);
   renderFeatured(sample.map(k=>({title:k,videoId:'',thumb:`https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg`,channel:'Canal Fictício'})));
 }
-
 function renderFeatured(arr){
   featuredGrid.innerHTML='';
   arr.forEach(it=>{
